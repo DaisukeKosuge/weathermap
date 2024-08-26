@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Map</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            color: #333;
+        }
+
+        #map-container {
+            flex-grow: 1;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #view {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            max-height: 500px;
+        }
+
+        #favorites-sidebar {
+            width: 250px;
+            background-color: #fff;
+            border-left: 1px solid #eaeaea;
+            padding: 20px;
+            box-sizing: border-box;
+            position: fixed;
+            right: 0;
+            top: 0;
+            height: 100vh;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #favorites-sidebar h2 {
+            font-size: 1.5rem;
+            margin-top: 0;
+        }
+
+        #favorites-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #favorites-list li {
+            padding: 10px;
+            border-bottom: 1px solid #eaeaea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #favorites-list li button {
+            background-color: #f1071e;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        #favorites-list li button:hover {
+            background-color: #d0061b;
+        }
+
+        #add-favorite {
+            margin-bottom: 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        #add-favorite:hover {
+            background-color: #0056b3;
+        }
+
+        #search-container {
+            margin-bottom: 20px;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        #search-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #search-button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <h1>天気情報マップ</h1>
+        <div id="map"></div>
+        <div id="view"></div>
+    </div>
+
+    <div id="favorites-sidebar">
+        <div id="search-container">
+            <input id="search-input" type="text" placeholder="住所または郵便番号を入力">
+            <button id="search-button">検索</button>
+        </div>
+        <button id="add-favorite">お気に入りに追加</button>
+        <h2>お気に入り</h2>
+        <ul id="favorites-list"></ul>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCW-iyiJlvrEgmj01SU1mIzS9PLQ_IKJuI&callback=initMap" async defer></script>
+    <script>
+       const weatherApiKey = "c0903b5234d8df1ea22d7c66f7e029fc"; // OpenWeatherMapのAPIキー
+       const iconUrl = "http://openweathermap.org/img/wn/";
+        let map;
+        let marker;
+        let favoritePlaces = JSON.parse(localStorage.getItem('favoritePlaces')) || [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            displayFavorites();
+        });
+
+        function initMap() {
+            const initialPosition = { lat: 35.64668324177112, lng: 139.7101126710708 }; // 三田の位置
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 10,
+                center: initialPosition,
+            });
+
+            // 検索ボタンのクリックイベント
+            document.getElementById("search-button").addEventListener("click", () => {
+                const address = document.getElementById("search-input").value;
+                geocodeAddress(address);
+            });
+
+            map.addListener("click", (event) => {
+                const lat = event.latLng.lat();
+                const lng = event.latLng.lng();
+
+                if (marker) {
+                    marker.setMap(null);
+                }
+
+                marker = new google.maps.Marker({
+                    position: { lat: lat, lng: lng },
+                    map: map,
+                });
+
+                getWeather(lat, lng);
+            });
+        }
+
+        function geocodeAddress(address) {
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ address: address }, (results, status) => {
+                if (status === "OK") {
+                    map.setCenter(results[0].geometry.location);
+                    if (marker) {
+                        marker.setMap(null);
+                    }
+                    marker = new google.maps.Marker({
+                        map: map,
+                        position: results[0].geometry.location,
+                    });
+
+                    const lat = results[0].geometry.location.lat();
+                    const lng = results[0].geometry.location.lng();
+                    getWeather(lat, lng);
+                } else {
+                    alert("Geocode was not successful for the following reason: " + status);
+                }
+            });
+        }
+
+        function getWeather(lat, lon) {
+            const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&lang=ja&units=metric`;
+
+            $.ajax({
+                url: url,
+                type: 'get',
+                cache: false,
+                dataType: "json"
+            }).done(function(data) {
+                let html = `<h2>${data.city.name} の天気予報</h2>`;
+                for (let i = 0; i < data.list.length; i++) {
+                    html += `
+                    <div class="weather-info">
+                        <div><span>時刻:</span> ${data.list[i].dt_txt}</div>
+                        <div><span>風速:</span> ${data.list[i].wind.speed} m/s</div>
+                        <div><span>天気:</span> ${data.list[i].weather[0].description}</div>
+                        <div><span>降水確率:</span> ${data.list[i].pop * 100}%</div>
+                        <div><img src="${iconUrl + data.list[i].weather[0].icon}@2x.png" alt="Weather Icon"></div>
+                    </div>
+                    `;
+                }
+                $("#view").html(html);
+            }).fail(function() {
+                alert("天気情報の取得に失敗しました。");
+            });
+        }
+
+        function addFavorite(lat, lng, name) {
+            const place = { lat, lng, name };
+            favoritePlaces.push(place);
+            localStorage.setItem('favoritePlaces', JSON.stringify(favoritePlaces));
+            displayFavorites();
+        }
+
+        function displayFavorites() {
+            const list = document.getElementById('favorites-list');
+            list.innerHTML = '';
+            favoritePlaces.forEach((place, index) => {
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `
+                    ${place.name}
+                    <div>
+                        <button onclick="getWeather(${place.lat}, ${place.lng})">天気を見る</button>
+                        <button onclick="removeFavorite(${index})">削除</button>
+                    </div>
+                `;
+                list.appendChild(listItem);
+            });
+        }
+
+        function removeFavorite(index) {
+            favoritePlaces.splice(index, 1);
+            localStorage.setItem('favoritePlaces', JSON.stringify(favoritePlaces));
+            displayFavorites();
+        }
+
+        document.getElementById('add-favorite').addEventListener('click', () => {
+            if (marker) {
+                const lat = marker.getPosition().lat();
+                const lng = marker.getPosition().lng();
+                const name = prompt("この場所の名前を入力してください:");
+                if (name) {
+                    addFavorite(lat, lng, name);
+                }
+            } else {
+                alert("マップ上で場所を選んでください。");
+            }
+        });
+    </script>
+</body>
+</html>
