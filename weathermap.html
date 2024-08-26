@@ -11,15 +11,16 @@
             margin: 0;
             padding: 0;
             display: flex;
-            flex-direction: row;
-            align-items: flex-start;
+            flex-direction: column;
+            align-items: center;
             color: #333;
         }
 
         #map-container {
-            flex-grow: 1;
+            width: calc(100% - 300px); /* 帯が表示される場合にマップを帯の幅だけ縮小 */
             padding: 20px;
             box-sizing: border-box;
+            transition: width 0.3s ease;
         }
 
         #map {
@@ -27,16 +28,34 @@
             width: 100%;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
         }
 
         #view {
-            margin-top: 20px;
             padding: 20px;
             border-radius: 8px;
             background-color: #fff;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
-            max-height: 500px;
+            max-width: 100%;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .weather-info {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .weather-info img {
+            width: 50px;
+            height: 50px;
+        }
+
+        .recommendation-info {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #d9534f;
+            text-align: center;
         }
 
         #favorites-sidebar {
@@ -50,6 +69,25 @@
             top: 0;
             height: 100vh;
             box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+            transform: translateX(0);
+            transition: transform 0.3s ease;
+        }
+
+        #favorites-sidebar.hidden {
+            transform: translateX(100%);
+        }
+
+        #toggle-sidebar {
+            position: fixed;
+            right: 0;
+            top: 10px;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px 0 0 4px;
+            z-index: 1000;
         }
 
         #favorites-sidebar h2 {
@@ -124,16 +162,18 @@
         #search-button:hover {
             background-color: #218838;
         }
+
     </style>
 </head>
 <body>
+    <button id="toggle-sidebar">お気に入り</button>
     <div id="map-container">
-        <h1>天気情報マップ</h1>
+        <h1>どこでも天気</h1>
         <div id="map"></div>
         <div id="view"></div>
     </div>
 
-    <div id="favorites-sidebar">
+    <div id="favorites-sidebar" class="hidden">
         <div id="search-container">
             <input id="search-input" type="text" placeholder="住所または郵便番号を入力">
             <button id="search-button">検索</button>
@@ -146,15 +186,30 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
     <!-- Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCW-iyiJlvrEgmj01SU1mIzS9PLQ_IKJuI&callback=initMap" async defer></script>
+    
     <script>
-       const weatherApiKey = "c0903b5234d8df1ea22d7c66f7e029fc"; // OpenWeatherMapのAPIキー
-       const iconUrl = "http://openweathermap.org/img/wn/";
+        const weatherApiKey = "c0903b5234d8df1ea22d7c66f7e029fc"; // OpenWeatherMapのAPIキー
+        const iconUrl = "http://openweathermap.org/img/wn/";
+
         let map;
         let marker;
         let favoritePlaces = JSON.parse(localStorage.getItem('favoritePlaces')) || [];
 
         document.addEventListener('DOMContentLoaded', () => {
             displayFavorites();
+
+            const toggleSidebarButton = document.getElementById("toggle-sidebar");
+            const sidebar = document.getElementById("favorites-sidebar");
+            const mapContainer = document.getElementById("map-container");
+
+            toggleSidebarButton.addEventListener("click", () => {
+                sidebar.classList.toggle("hidden");
+                if (sidebar.classList.contains("hidden")) {
+                    mapContainer.style.width = "100%";
+                } else {
+                    mapContainer.style.width = "calc(100% - 300px)";
+                }
+            });
         });
 
         function initMap() {
@@ -218,19 +273,47 @@
                 cache: false,
                 dataType: "json"
             }).done(function(data) {
-                let html = `<h2>${data.city.name} の天気予報</h2>`;
+                let weatherHtml = `<h2>${data.city.name} の天気予報</h2>`;
+                
                 for (let i = 0; i < data.list.length; i++) {
-                    html += `
+                    const weatherData = data.list[i];
+                    const temp = weatherData.main.temp;
+                    const tempMin = weatherData.main.temp_min;
+                    const tempMax = weatherData.main.temp_max;
+                    const windSpeed = weatherData.wind.speed;
+                    const pop = weatherData.pop * 100;
+                    const description = weatherData.weather[0].description;
+
+                    // おすすめアイテムを決定
+                    let recommendation = '';
+                    if (temp < 15) {
+                        recommendation = "寒いので、暖かいコートやマフラーをお持ちください。";
+                    } else if (temp < 20) {
+                        recommendation = "少し肌寒いので、ジャケットを羽織るのがおすすめです。";
+                    } else if (temp > 25) {
+                        recommendation = "暑いので、軽装とサングラスをお忘れなく。";
+                    }
+
+                    if (pop > 50) {
+                        recommendation += " 傘やレインコートも準備しましょう。";
+                    }
+
+                    weatherHtml += `
                     <div class="weather-info">
-                        <div><span>時刻:</span> ${data.list[i].dt_txt}</div>
-                        <div><span>風速:</span> ${data.list[i].wind.speed} m/s</div>
-                        <div><span>天気:</span> ${data.list[i].weather[0].description}</div>
-                        <div><span>降水確率:</span> ${data.list[i].pop * 100}%</div>
-                        <div><img src="${iconUrl + data.list[i].weather[0].icon}@2x.png" alt="Weather Icon"></div>
+                        <div><span>時刻:</span> ${weatherData.dt_txt}</div>
+                        <div><span>気温:</span> ${temp}°C</div>
+                        <div><span>最低気温:</span> ${tempMin}°C</div>
+                        <div><span>最高気温:</span> ${tempMax}°C</div>
+                        <div><span>風速:</span> ${windSpeed} m/s</div>
+                        <div><span>天気:</span> ${description}</div>
+                        <div><span>降水確率:</span> ${pop}%</div>
+                        <div><img src="${iconUrl + weatherData.weather[0].icon}@2x.png" alt="Weather Icon"></div>
+                        <div class="recommendation-info"><span>おすすめアイテム:</span> ${recommendation}</div>
                     </div>
                     `;
                 }
-                $("#view").html(html);
+
+                $("#view").html(weatherHtml);
             }).fail(function() {
                 alert("天気情報の取得に失敗しました。");
             });
